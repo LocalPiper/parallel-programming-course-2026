@@ -32,6 +32,8 @@ class Scheduler {
   std::vector<bool> pending_;
   bool aborted_ = false;
 
+  std::vector<std::function<bool()>> blocked_cond_;
+
   std::vector<class sched_mutex *> mutexes_;
 
   friend class sched_mutex;
@@ -62,6 +64,11 @@ public:
     if (state_[id] == ThreadState::BLOCKED)
       state_[id] = ThreadState::READY;
   }
+
+  void set_blocked_cond(int id, std::function<bool()> f) {
+    blocked_cond_[id] = std::move(f);
+  }
+  void clear_blocked_cond(int id) { blocked_cond_[id] = nullptr; }
 };
 
 void point();

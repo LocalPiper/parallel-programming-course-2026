@@ -41,6 +41,7 @@ void Scheduler::run(Strategy &strategy) {
   int n = (int)bodies_.size();
   pending_.assign(n, false);
   state_.assign(n, ThreadState::READY);
+  blocked_cond_.assign(n, nullptr);
   sem_.clear();
   for (int i = 0; i < n; ++i)
     sem_.push_back(std::make_unique<std::binary_semaphore>(0));
@@ -77,6 +78,13 @@ void Scheduler::run(Strategy &strategy) {
   }
 
   while (true) {
+    for (int i = 0; i < n; ++i) {
+      if (state_[i] == ThreadState::BLOCKED && blocked_cond_[i] &&
+          blocked_cond_[i]()) {
+        state_[i] = ThreadState::READY;
+      }
+    }
+
     std::vector<int> enabled;
     bool any_alive = false;
     for (int i = 0; i < n; ++i) {
@@ -138,17 +146,22 @@ void point() {
 
 void await(std::function<bool()> cond) {
   Scheduler *s = g_ctx.sched;
-  if (!s)
-    return;
-  while (!cond()) {
-    s->clear_pending();
+  if (!s) return;
+  while (true) {
+    if (s->has_pending() || !cond()) {
+      if (s->has_pending()) s->clear_pending();
+      s->yield_to_sched(ThreadState::READY);   // pick
+      if (s->is_aborted()) throw std::runtime_error("aborted");
+      if (cond()) break;
+    } else {
+      break;
+    }
+    s->set_blocked_cond(g_ctx.id, cond);
     s->yield_to_sched(ThreadState::BLOCKED);
+    s->clear_blocked_cond(g_ctx.id);
+    if (s->is_aborted()) throw std::runtime_error("aborted");
   }
-  if (s->has_pending()) {
-    s->clear_pending();
-    s->log_line("await done");
-    s->yield_to_sched(ThreadState::READY);
-  }
+  s->log_line("await done");
   s->mark_pending();
 }
 
