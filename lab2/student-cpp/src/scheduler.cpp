@@ -1,4 +1,5 @@
 #include "scheduler.hpp"
+#include "sched_mutex.hpp"
 #include <stdexcept>
 
 namespace sched {
@@ -8,6 +9,10 @@ thread_local ThreadCtx g_ctx;
 Scheduler::Scheduler() {}
 
 Scheduler::~Scheduler() {
+  if (aborted_) {
+    for (int i = 0; i < (int)sem_.size(); ++i)
+      sem_[i]->release();
+  }
   for (auto &t : threads_)
     if (t.joinable())
       t.join();
@@ -20,8 +25,7 @@ void Scheduler::spawn(std::function<void()> body) {
 void Scheduler::log_line(const std::string &op) {
   if (!logging)
     return;
-  int id = g_ctx.id;
-  log.push_back(std::string(1, letter(id)) + "  " + op);
+  log.push_back(std::string(1, letter(g_ctx.id)) + "  " + op);
 }
 
 void Scheduler::yield_to_sched(ThreadState new_state) {
@@ -29,10 +33,12 @@ void Scheduler::yield_to_sched(ThreadState new_state) {
   state_[id] = new_state;
   sem_sched_.release();
   sem_[id]->acquire();
+  if (aborted_)
+    throw std::runtime_error("aborted");
 }
 
 void Scheduler::run(Strategy &strategy) {
-  int n = static_cast<int>(bodies_.size());
+  int n = (int)bodies_.size();
   pending_.assign(n, false);
   state_.assign(n, ThreadState::READY);
   sem_.clear();
@@ -41,12 +47,19 @@ void Scheduler::run(Strategy &strategy) {
   trace_.clear();
   last_ = -1;
   aborted_ = false;
+  deadlock.clear();
+  log.clear();
 
   for (int i = 0; i < n; ++i) {
     threads_.emplace_back([this, i] {
       g_ctx.sched = this;
       g_ctx.id = i;
       sem_[i]->acquire();
+      if (aborted_) {
+        state_[i] = ThreadState::FINISHED;
+        sem_sched_.release();
+        return;
+      }
       try {
         bodies_[i]();
       } catch (...) {
@@ -56,8 +69,6 @@ void Scheduler::run(Strategy &strategy) {
     });
   }
 
-  // Старт: довести каждый поток до первой паузы.
-  // pending_[i] = true ДО release — иначе поток проскочит первый get без паузы.
   for (int i = 0; i < n; ++i) {
     pending_[i] = true;
     state_[i] = ThreadState::RUNNING;
@@ -77,7 +88,12 @@ void Scheduler::run(Strategy &strategy) {
     if (enabled.empty()) {
       if (!any_alive)
         break;
-      break; // deadlock — этап 2
+      // DEADLOCK
+      deadlock = held_string();
+      aborted_ = true;
+      for (int i = 0; i < n; ++i)
+        sem_[i]->release();
+      break;
     }
     int choice = strategy.pick(enabled, last_);
     last_ = choice;
@@ -96,7 +112,21 @@ void Scheduler::run(Strategy &strategy) {
 std::string Scheduler::trace_string() const { return trace_; }
 
 void Scheduler::register_mutex(sched_mutex *m) { mutexes_.push_back(m); }
-std::string Scheduler::held_string() const { return ""; }
+
+std::string Scheduler::held_string() const {
+  std::string res = "held={";
+  bool first = true;
+  for (auto *m : mutexes_) {
+    if (m->owner() < 0)
+      continue;
+    if (!first)
+      res += ", ";
+    first = false;
+    res += m->name + ":" + std::string(1, letter(m->owner()));
+  }
+  res += "}";
+  return res;
+}
 
 void point() {
   Scheduler *s = g_ctx.sched;

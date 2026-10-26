@@ -1,10 +1,8 @@
 #pragma once
-// Этап 2: лок, о котором знает планировщик. Поток, ждущий занятый лок, не
-// попадает в enabled; обычный std::mutex здесь нельзя — поток уснёт с ходом в
-// руках и всё зависнет. Лог: "lock <имя>", "unlock <имя>". Планировщик должен
-// знать все локи, чтобы печатать held={a:A, b:B}.
+#include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "scheduler.hpp"
 
@@ -12,23 +10,61 @@ namespace sched {
 
 class sched_mutex {
 public:
-  // Создаётся в setup() тестовой программы; зарегистрируйте лок в планировщике
-  // s.
-  sched_mutex(Scheduler &s, std::string name) : name(std::move(name)) {
-    (void)s;
+  sched_mutex(Scheduler &s, std::string name)
+      : sched_(s), name(std::move(name)) {
+    s.register_mutex(this);
   }
   sched_mutex(const sched_mutex &) = delete;
 
-  // Пауза; если лок занят — ждать, не участвуя в выборе; затем стать
-  // владельцем.
-  void lock() { throw std::logic_error("TODO этап 2: sched_mutex::lock"); }
-  // Пауза; освободить лок, ждавшие потоки снова могут быть выбраны.
-  void unlock() { throw std::logic_error("TODO этап 2: sched_mutex::unlock"); }
+  void lock() {
+    Scheduler *s = g_ctx.sched;
+    if (!s)
+      return;
+    while (owner_ != -1) {
+      waiters_.push_back(g_ctx.id);
+      s->clear_pending();
+      s->yield_to_sched(ThreadState::BLOCKED);
+      if (s->is_aborted())
+        throw std::runtime_error("aborted");
+    }
+    if (s->has_pending()) {
+      s->clear_pending();
+      s->yield_to_sched(ThreadState::READY);
+    }
+    owner_ = g_ctx.id;
+    s->log_line("lock " + name);
+    s->mark_pending();
+  }
 
+  void unlock() {
+    Scheduler *s = g_ctx.sched;
+    if (!s)
+      return;
+    if (s->is_aborted()) {
+      owner_ = -1;
+      return;
+    }
+    if (s->has_pending()) {
+      s->clear_pending();
+      s->yield_to_sched(ThreadState::READY);
+    }
+    owner_ = -1;
+    s->log_line("unlock " + name);
+    for (int w : waiters_)
+      s->wake(w);
+    waiters_.clear();
+    s->mark_pending();
+  }
+
+  int owner() const { return owner_; }
   const std::string name;
+
+private:
+  Scheduler &sched_;
+  int owner_ = -1;
+  std::vector<int> waiters_;
 };
 
-// RAII: lock сейчас, unlock на закрывающей скобке. Выдан готовым.
 class sched_guard {
 public:
   explicit sched_guard(sched_mutex &m) : m_(m) { m_.lock(); }

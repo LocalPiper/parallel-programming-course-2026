@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <cstdint>
 #include <random>
 #include <stdexcept>
@@ -14,11 +15,22 @@ struct FirstAlive : Strategy {
 };
 
 struct Replay : Strategy {
-  explicit Replay(std::string) {}
-  void begin_run() override {}
-  int pick(const std::vector<int> &, int) override {
-    throw std::logic_error("TODO этап 2: Replay::pick");
+  explicit Replay(std::string trace) : trace_(std::move(trace)) {}
+  void begin_run() override { pos_ = 0; }
+  int pick(const std::vector<int> &enabled, int) override {
+    if (pos_ >= trace_.size())
+      throw std::runtime_error("replay: trace ended before run finished");
+    char c = trace_[pos_++];
+    int id = c - 'A';
+    if (std::find(enabled.begin(), enabled.end(), id) == enabled.end())
+      throw std::runtime_error(std::string("replay: thread ") + c +
+                               " not enabled");
+    return id;
   }
+
+private:
+  std::string trace_;
+  size_t pos_ = 0;
 };
 
 struct RandomPick : Strategy {

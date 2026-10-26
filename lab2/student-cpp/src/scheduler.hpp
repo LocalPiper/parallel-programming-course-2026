@@ -57,6 +57,11 @@ public:
 
   void register_mutex(class sched_mutex *m);
   std::string held_string() const;
+  bool is_aborted() const { return aborted_; }
+  void wake(int id) {
+    if (state_[id] == ThreadState::BLOCKED)
+      state_[id] = ThreadState::READY;
+  }
 };
 
 void point();
