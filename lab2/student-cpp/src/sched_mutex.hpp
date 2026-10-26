@@ -20,20 +20,25 @@ public:
     Scheduler *s = g_ctx.sched;
     if (!s)
       return;
-    while (owner_ != -1) {
+    while (true) {
+      if (owner_ == -1) {
+        if (s->has_pending()) {
+          s->clear_pending();
+          s->yield_to_sched(ThreadState::READY);
+        }
+        if (owner_ == -1) {
+          owner_ = g_ctx.id;
+          s->log_line("lock " + name);
+          s->mark_pending();
+          return;
+        }
+      }
       waiters_.push_back(g_ctx.id);
       s->clear_pending();
       s->yield_to_sched(ThreadState::BLOCKED);
       if (s->is_aborted())
         throw std::runtime_error("aborted");
     }
-    if (s->has_pending()) {
-      s->clear_pending();
-      s->yield_to_sched(ThreadState::READY);
-    }
-    owner_ = g_ctx.id;
-    s->log_line("lock " + name);
-    s->mark_pending();
   }
 
   void unlock() {

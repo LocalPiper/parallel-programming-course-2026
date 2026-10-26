@@ -659,7 +659,20 @@ A0: Ничего. Планировщик ОС мог просто не пере�
 #### Этап 3: Random
 | Программа | seed'ов | Ошибок (%) | Первая ошибочная трасса | Повтор |
 |---|---|---|---|---|
-| `withdraw-v1` | 1000 | 75.5% | first failing seed 0: ABBABBAA -> OVERDRAFT balance=-100 results=true,true | replay ABBABBAA: same failure 10/10 |
+| `withdraw-v1` | 1000 | 49.6% | first failing seed 1: BBAABBAA -> OVERDRAFT balance=-100 results=true,true | replay BBAABBAA: same failure 10/10 |
+
+Результат воспроизведения трассы:
+  B  lock mu
+  B  unlock mu
+  B  window
+  A  lock mu
+  A  unlock mu
+  A  window
+  B  lock mu
+  B  unlock mu
+  A  lock mu
+  A  unlock mu
+schedule BBAABBAA -> OVERDRAFT balance=-100 results=true,true
 
 #### Этап 4: DFS
 | Программа | Расписаний | Ошибок | Первая ошибочная трасса | Почему программа на ней ломается |
