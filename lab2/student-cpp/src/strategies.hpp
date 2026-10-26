@@ -46,14 +46,59 @@ private:
 };
 
 struct Dfs : Strategy {
-  explicit Dfs(int) {}
-  void begin_run() override {}
-  int pick(const std::vector<int> &, int) override {
-    throw std::logic_error("TODO этап 4: Dfs::pick");
+  explicit Dfs(int bound) : bound_(bound) {}
+
+  void begin_run() override {
+    pos_ = 0;
+    evictions_ = 0;
   }
+
+  int pick(const std::vector<int> &enabled, int last) override {
+    if (pos_ == (int)path_.size()) {
+      std::vector<int> choices;
+      for (int id : enabled) {
+        bool evicts = (last != -1 && id != last);
+        if (!evicts || evictions_ < bound_)
+          choices.push_back(id);
+      }
+      if (choices.empty()) {
+        choices.push_back(enabled[0]);
+      }
+      choices_.push_back(choices);
+      path_.push_back(0);
+    } else if ((int)choices_.size() <= pos_) {
+      choices_.resize(pos_ + 1);
+      path_.resize(pos_ + 1, 0);
+    }
+    int idx = path_[pos_];
+    int chosen = choices_[pos_][idx];
+    if (last != -1 && chosen != last)
+      evictions_++;
+    pos_++;
+    return chosen;
+  }
+
   bool end_run() override {
-    throw std::logic_error("TODO этап 4: Dfs::end_run");
+    while (!path_.empty()) {
+      int i = (int)path_.size() - 1;
+      if (path_[i] + 1 < (int)choices_[i].size()) {
+        path_[i]++;
+        path_.resize(i + 1);
+        choices_.resize(i + 1);
+        return true;
+      }
+      path_.pop_back();
+      choices_.pop_back();
+    }
+    return false;
   }
+
+private:
+  int bound_;
+  std::vector<std::vector<int>> choices_;
+  std::vector<int> path_;
+  int pos_ = 0;
+  int evictions_ = 0;
 };
 
 } // namespace sched
