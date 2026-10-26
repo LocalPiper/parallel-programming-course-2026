@@ -692,11 +692,11 @@ A4: У V1 check и act — две отдельные критические се
 #### Этап 5: Bounded
 | Программа | K | Расписаний | Ошибок | Первая ошибочная трасса | На каком решении вытеснение (для минимального K; нумерация с 1, как в этапе 5) |
 |---|---|---|---|---|---|
-| `withdraw-v1` | 0 | | | | |
-| `withdraw-v1` | 1 | | | | |
-| `withdraw-v1` | 2 | | | | |
-| `transfer` | 0 | | | | |
-| `transfer` | 1 | | | | |
+| `withdraw-v1` | 0 | 2 | 0 | - | - |
+| `withdraw-v1` | 1 | 8 | 2 | first failing: AABBBBAA -> OVERDRAFT balance=-100 results=true,true | решение 2 (A → B) |
+| `withdraw-v1` | 2 | 14 | 8 | first failing: AABABBBAA -> OVERDRAFT balance=-100 results=true,true | решение 2 (A → B) |
+| `transfer` | 0 | 2 | 0 | - | - |
+| `transfer` | 1 | 8 | 2 | first failing: ABA -> DEADLOCK held={a:A, b:B} | решение 2 (A → B) |
 
 ### 3. Результаты этапа 6 (Коллектор)
 
