@@ -34,10 +34,15 @@ private:
 };
 
 struct RandomPick : Strategy {
-  explicit RandomPick(uint32_t) {}
-  int pick(const std::vector<int> &, int) override {
-    throw std::logic_error("TODO этап 3: RandomPick::pick");
+  explicit RandomPick(uint32_t seed) : seed_(seed), rnd_(seed) {}
+  void begin_run() override { rnd_.seed(seed_); }
+  int pick(const std::vector<int> &enabled, int) override {
+    return enabled[rnd_() % enabled.size()];
   }
+
+private:
+  uint32_t seed_;
+  std::mt19937 rnd_;
 };
 
 struct Dfs : Strategy {
